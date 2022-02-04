@@ -1,18 +1,28 @@
+import os
 import json
 import logging
 from decimal import Decimal
 from collections import defaultdict
 
+import requests
+
 log = logging.getLogger()
 log.setLevel(logging.INFO)
 
+
+VALIDATION_ERROR = 'VALIDATION_ERROR'
 INTERNAL_SERVER_ERROR = 'INTERNAL_SERVER_ERROR'
 INSUFFICIENT_BALANCE = 'INSUFFICIENT_BALANCE'
 
+cb_url = os.getenv('CORE_BANKING_BASE_URL', 'http://corebanking-dev.com')
+
+
+def call_core_banking(data: dict):
+    headers = {}  # to be defined
+    return requests.post(cb_url + '/transactions', headers=headers, data=data)
+
 
 def error(error_code: str, msg: str):
-    log.error(f"{error_code}, {msg}")
-    print(msg)
     return {
         "statusCode": 500,
         "headers": {
@@ -34,57 +44,58 @@ def success(res: dict):
             "Content-Type": "application/json"
         },
         "body": json.dumps(
-            res
+            res['body']
         )
     }
 
 
-balances = defaultdict(int)
 def lambda_handler(event, context):
     log.info(f'Received {event}')
     try:
         body = event.get('body')
         if body is None:
-            return error(INTERNAL_SERVER_ERROR, "No body in input")
+            return error(VALIDATION_ERROR, "No body in input")
+
         if isinstance(body, str):
             data = json.loads(body)
         else:
             data = body
         try:
-            account_from = int(data['accountFrom'])
+            account_from = int(data['account_from'])
         except ValueError:
-            return error(INTERNAL_SERVER_ERROR, msg='accountFrom was not int')
+            return error(VALIDATION_ERROR, msg='account_from was not int')
+        except KeyError:
+            return error(VALIDATION_ERROR, msg='account_from was not present')
         try:
-            account_to = int(data['accountTo'])
+            account_to = int(data['account_to'])
         except ValueError:
-            return error(INTERNAL_SERVER_ERROR, msg='accountTo was not int')            
+            return error(VALIDATION_ERROR, msg='account_to was not int')            
+        except KeyError:
+            return error(VALIDATION_ERROR, msg='account_to was not present')
         try:
             amount = int(data['amount'])  # ?!! int or float/double / decimal
+            if amount <= 0:
+                return error(VALIDATION_ERROR, msg='amount was <= 0')            
         except ValueError:
-            return error(INTERNAL_SERVER_ERROR, msg='amount was not int')            
+            return error(VALIDATION_ERROR, msg='amount was not int')            
+        except KeyError:
+            return error(VALIDATION_ERROR, msg='amount was not present')
 
-        transaction_type = data['transactionType']
-        prev_balance = balances[account_from]
+        d = {"accountFrom": account_from,
+             "accountTo": account_to,
+             "amount": amount,
+             "transactionType": "DEBIT"}
 
-        if transaction_type not in ('CREDIT', 'DEBIT'):
-            return error(INTERNAL_SERVER_ERROR,
-                         msg=f'Invalid transaction type {transaction_type}')
-
-        if transaction_type == 'CREDIT':
-            account_to_debit, account_to_credit = account_from, account_to 
+        response = call_core_banking(d)
+        
+        if response.status_code == 200:
+            return success(response.json())
+        elif response.status_code == 500:
+            data = response.json()
+            return error(data['body']['errorCode'], data['body']['errorMessage'])
         else:
-            account_to_debit, account_to_credit = account_to, account_from
-
-       
-        if balances[account_to_credit] < amount:
-            return error(INSUFFICIENT_BALANCE, f"Insufficient Balance in {account_to_credit}")
-        else:
-            balances[account_to_credit] -= amount
-            balances[account_to_debit] += amount
-
-        return success({"currentBalance": balances[account_from],  # not sure what type int format double means here. Should use Decimal type.
-                        "previousBalance": prev_balance})
+            raise NotImplementedError(f"Unexpected status_code from api {response.status_code}")
 
     except Exception as e:
-        return error(INTERNAL_SERVER_ERROR, msg=f"{str(e)} Internal exception encountered")  # or str(e))
-
+        log.error(str(e))
+        return error(INTERNAL_SERVER_ERROR, msg=str(e) + f"Internal exception encountered")
