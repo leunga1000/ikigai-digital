@@ -10,49 +10,40 @@ log = logging.getLogger()
 log.setLevel(logging.INFO)
 
 
-VALIDATION_ERROR = 'VALIDATION_ERROR'
-INTERNAL_SERVER_ERROR = 'INTERNAL_SERVER_ERROR'
-INSUFFICIENT_BALANCE = 'INSUFFICIENT_BALANCE'
+VALIDATION_ERROR = "VALIDATION_ERROR"
+INTERNAL_SERVER_ERROR = "INTERNAL_SERVER_ERROR"
+INSUFFICIENT_BALANCE = "INSUFFICIENT_BALANCE"
 
-cb_url = os.getenv('CORE_BANKING_BASE_URL', 'http://corebanking-dev.com')
+cb_url = os.getenv("CORE_BANKING_BASE_URL", "http://corebanking-dev.com")
 
 
 def call_core_banking(data: dict):
     headers = {}  # to be defined
-    return requests.post(cb_url + '/transactions', headers=headers, data=data)
+    return requests.post(cb_url + "/transactions", headers=headers, data=data)
 
 
 def error(error_code: str, msg: str):
     return {
         "statusCode": 500,
-        "headers": {
-            "Content-Type": "application/json"
-        },
-        "body": json.dumps({
-            "errorCode": error_code,
-            "errorMessage": msg
-        })
+        "headers": {"Content-Type": "application/json"},
+        "body": json.dumps({"errorCode": error_code, "errorMessage": msg}),
     }
 
 
 def success(res: dict):
     # log.error(error_code, msg)
-    
+
     return {
         "statusCode": 200,
-        "headers": {
-            "Content-Type": "application/json"
-        },
-        "body": json.dumps(
-            res['body']
-        )
+        "headers": {"Content-Type": "application/json"},
+        "body": json.dumps(res["body"]),
     }
 
 
 def lambda_handler(event, context):
-    log.info(f'Received {event}')
+    log.info(f"Received {event}")
     try:
-        body = event.get('body')
+        body = event.get("body")
         if body is None:
             return error(VALIDATION_ERROR, "No body in input")
 
@@ -61,41 +52,47 @@ def lambda_handler(event, context):
         else:
             data = body
         try:
-            account_from = int(data['account_from'])
+            account_from = int(data["account_from"])
         except ValueError:
-            return error(VALIDATION_ERROR, msg='account_from was not int')
+            return error(VALIDATION_ERROR, msg="account_from was not int")
         except KeyError:
-            return error(VALIDATION_ERROR, msg='account_from was not present')
+            return error(VALIDATION_ERROR, msg="account_from was not present")
         try:
-            account_to = int(data['account_to'])
+            account_to = int(data["account_to"])
         except ValueError:
-            return error(VALIDATION_ERROR, msg='account_to was not int')            
+            return error(VALIDATION_ERROR, msg="account_to was not int")
         except KeyError:
-            return error(VALIDATION_ERROR, msg='account_to was not present')
+            return error(VALIDATION_ERROR, msg="account_to was not present")
         try:
-            amount = int(data['amount'])  # ?!! int or float/double / decimal
+            amount = int(data["amount"])  # ?!! int or float/double / decimal
             if amount <= 0:
-                return error(VALIDATION_ERROR, msg='amount was <= 0')            
+                return error(VALIDATION_ERROR, msg="amount was <= 0")
         except ValueError:
-            return error(VALIDATION_ERROR, msg='amount was not int')            
+            return error(VALIDATION_ERROR, msg="amount was not int")
         except KeyError:
-            return error(VALIDATION_ERROR, msg='amount was not present')
+            return error(VALIDATION_ERROR, msg="amount was not present")
 
-        d = {"accountFrom": account_from,
-             "accountTo": account_to,
-             "amount": amount,
-             "transactionType": "DEBIT"}
+        d = {
+            "accountFrom": account_from,
+            "accountTo": account_to,
+            "amount": amount,
+            "transactionType": "DEBIT",
+        }
 
         response = call_core_banking(d)
-        
+
         if response.status_code == 200:
             return success(response.json())
         elif response.status_code == 500:
             data = response.json()
-            return error(data['body']['errorCode'], data['body']['errorMessage'])
+            return error(data["body"]["errorCode"], data["body"]["errorMessage"])
         else:
-            raise NotImplementedError(f"Unexpected status_code from api {response.status_code}")
+            raise NotImplementedError(
+                f"Unexpected status_code from api {response.status_code}"
+            )
 
     except Exception as e:
         log.error(str(e))
-        return error(INTERNAL_SERVER_ERROR, msg=str(e) + f"Internal exception encountered")
+        return error(
+            INTERNAL_SERVER_ERROR, msg=str(e) + f"Internal exception encountered"
+        )
