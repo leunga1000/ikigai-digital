@@ -41,6 +41,10 @@ def success(res: dict):
 
 
 def lambda_handler(event, context):
+    """ 
+    Lambda Function takes in an input event and forwards it to the Core Banking
+    API after validating inputs. Follows the core banking API in its return sig
+    """
     log.info(f"Received {event}")
     try:
         body = event.get("body")
