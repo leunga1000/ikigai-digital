@@ -8,3 +8,5 @@ docker-run:
 		docker build -t ikdi . && docker run -p 80:8080 ikdi
 deploy:
 		terraform init && terraform plan && terraform apply
+undeploy:
+		terraform destroy
