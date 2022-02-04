@@ -51,4 +51,10 @@ Would need to be part of a production application.
 
 ### 3rd party API
 Some questions from the 3rd party API - amount is specified as int, with format double.
+
 Transaction returns balance - but of which account.
+
+Need to triple check whether direction of DEBIT/CREDIT is correct.
+
+### Terraform
+Need to customise to this application. Need to set up the CORE_BANKING_BASE_URL environment variable dependent on environment.
